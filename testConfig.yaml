@@ -1,0 +1,10 @@
+oracleConnection:
+  connectString: 'localhost:1526/ORCLPDB1'
+  user: provendb
+  password: myLongPassword23
+anchorType: HEDERA
+dbmsAlert: 'TRUE'
+proofable:
+  token: >-
+    eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhbmNob3IiLCJleHAiOjE3ODA5ODE5MzMsImp0aSI6ImFhMW5nbnFtNDVpMHFtNHIxMHZmeGp1ZiIsInN1YiI6InUya3o3ZTc1NnNuajF6NTFid2g1bTZuZyIsInNjb3BlIjoiMCIsInJvbGUiOiJGcmVlIn0.MtooMUPuhCnve1DwJKqXQyh324I2x_9_ASH-xSs3j-0
+  endpoint: 'anchor.proofable.io:443'
