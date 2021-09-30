@@ -19,12 +19,17 @@
  *
  * @Author: Guy Harrison
  */
-const { loadAll } = require('js-yaml');
-const sqlConnection = require('mssql');
+const {
+    loadAll
+} = require('js-yaml');
+const mssql = require('mssql');
 const {
     setGracefulCleanup
 } = require('tmp');
 const log = require('simple-node-logger').createSimpleLogger();
+const {
+    anchorData
+} = require('./provendb');
 const {
     flags
 } = require('../commands/install');
@@ -33,24 +38,276 @@ const {
 const debug = false;
 
 module.exports = {
+    connectSQLServer: async (config, verbose = false) => {
+        if (verbose) {
+            log.setLevel('trace');
+        }
+        log.info('Connecting to SQL Server');
+        try {
+            log.trace(config);
+            // make sure that any items are correctly URL encoded in the connection string
+            const connectionString = `${config.dbConnection.connectionString}`;
+            log.trace('connection String: ', connectionString);
+            const connection = await mssql.connect(connectionString);
+            const checkOutput = await connection.query('SELECT current_timestamp AS timestamp');
+            const connectionTimestamp = checkOutput.recordset[0].timestamp;
+            log.trace('Connected at ', connectionTimestamp);
+            return (connection);
+        } catch (error) {
+            log.error(error.stack);
+            throw Error(error);
+        }
+    },
     installPDB4SS: async (flags) => {
         if (flags.verbose) {
             log.setLevel('trace');
         }
-        const dbaConnection = await connectSQLServer(flags);
+        const dbaConnection = await connectDBA(flags);
         if (flags.dropExisting) {
-            await dropUser(dbaConnection, flags);
             if (flags.createDemoAccount) {
                 await dropDemoUser(dbaConnection, flags);
             }
         }
+        await dropUser(dbaConnection, flags);
         await createUser(dbaConnection, flags);
         await createTables(dbaConnection, flags);
         if (flags.createDemoAccount) {
             await createDemoUser(dbaConnection, flags);
         }
+    },
+    processRequests: async (connection, config, verbose = false) => {
+        if (verbose) {
+            log.setLevel('trace');
+        }
+        try {
+            // TODO: transaction handling.
+            // connection.query('BEGIN TRANSACTION'); //NB: NO CONNECTION POOL!
+            let noDataFound = false;
+            do {
+                const querySQL = `
+                        SELECT id,requesttype,requestjson FROM provendbrequests WITH (UPDLOCK)                
+                         WHERE STATUS = 'NEW'
+                        ORDER BY ID`;
+                log.trace(querySQL);
+
+                const output = await connection.query(querySQL);
+                log.trace(output.recordset);
+                if (output.recordset.length === 0) {
+                    // await connection.commit; // release lock
+                    noDataFound = true;
+                } else {
+                    log.trace(output.recordset);
+                    for (let rn = 0; rn < output.recordset.length; rn++) {
+                        const row = output.recordset[rn];
+                        log.trace(row);
+                        log.info('Processing request ', row.requestjson);
+                        if (row.requesttype === 'ANCHOR') {
+                            await processAnchorRequest(connection, config, row.id, JSON.parse(row.requestjson));
+                        } else if (requestType === 'VALIDATE') {
+                            await processValidateRequest(connection, config, row.id, JSON.parse(row.requestjson));
+                        }
+                    }
+                }
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            } while (!noDataFound);
+        } catch (error) {
+            log.error(error.message);
+
+            throw Error(error);
+        }
     }
 };
+
+async function processAnchorRequest(connection, config, id, requestJson) {
+    log.trace('json: ', requestJson);
+    let where;
+    let keyColumn;
+    let columns = '*';
+
+    if (!('table' in requestJson)) {
+        await invalidateRequest(connection, id, 'Must specify table argument in request');
+        return;
+    }
+    try {
+        if ('columns' in requestJson) {
+            columns = requestJson.columns;
+        }
+        if ('where' in requestJson) {
+            where = requestJson.where;
+        }
+        if ('keyColumn' in requestJson) {
+            keyColumn = requestJson.keyColumn;
+        }
+
+        const proofId = await anchor1Table({
+            connection,
+            config,
+            tableName: requestJson.table,
+            whereClause: where,
+            columnList: columns,
+            keyColumn
+        });
+        await completeRequest(connection, id, proofId, '');
+    } catch (error) {
+        log.error('Error processing request: ', error.message);
+        log.trace(error.stack);
+        await invalidateRequest(connection, id, error.message);
+    }
+}
+
+async function processValidateRequest(connection, config, id, requestJson, verbose) {
+    if (verbose) {
+        log.setLevel('trace');
+    }
+    log.trace('json: ', requestJson);
+    let proofId;
+
+    if (!('proofId' in requestJson)) {
+        await invalidateRequest(id, 'Must specify proofId in request');
+        return;
+    }
+    try {
+        proofId = requestJson.proofId;
+        const validateOracleProofOut = await module.exports.validateOracleProof(proofId, `${proofId}.provendb`, verbose);
+        log.trace(validateOracleProofOut);
+        if (validateOracleProofOut.proofIsValid) {
+            await completeRequest(connection, id, proofId, validateOracleProofOut.messages);
+        } else {
+            await invalidateRequest(connection, id, JSON.stringify(validateOracleProofOut.messages));
+        }
+        await connection.query(
+            `UPDATE provendbcontrol 
+                SET last_checked=CURRENT_TIMESTAMP 
+              WHERE proofId=:1`, [proofId]
+        );
+    } catch (error) {
+        log.error('Error processing request: ', error.message);
+        await invalidateRequest(connection, id, error.message);
+    }
+}
+
+async function invalidateRequest(connection, id, message) {
+    const sql = `
+    UPDATE provendbrequests 
+       SET status='FAILED',
+           messages=@message,
+           statusdate=getdate()
+     WHERE ID=@id `;
+    log.trace(sql);
+    await connection.request().input('message', mssql.VarChar, message).input('id', mssql.Int, id).query(sql);
+    log.error(`Request ${id} failed: ${message}`);
+}
+
+async function completeRequest(connection, id, proofId, messages = []) {
+    const bindMessages = JSON.stringify(messages);
+    const sql = `
+    UPDATE provendbrequests 
+       SET status='SUCCESS',
+           statusdate=getdate(),
+           proofId='${proofId}',
+           messages='${bindMessages}'
+     WHERE ID=${id}`;
+    log.trace(sql);
+    // TODO: Bind variables
+    await connection.query(sql);
+    log.info('Request ', id, ' succeeded');
+}
+
+async function anchor1Table({
+    connection,
+    config,
+    tableName,
+    whereClause,
+    columnList,
+    keyColumn
+}) {
+    /* const splitTableName = userNameTableName.split('.');
+    if (splitTableName.length != 2) {
+        const errm = 'Table Definitions should be in user.table format';
+        log.error(errm);
+        throw Error(errm);
+    }
+    const userName = splitTableName[0];
+    const tableName = splitTableName[1];
+    const tableDef = await module.exports.getTableDef(userName, tableName, verbose); */
+
+
+    log.trace('Processing ', tableName);
+    const tableData = await getTableData({
+        connection,
+        tableName,
+        whereClause,
+        columnList,
+        keyColumn
+    });
+    log.trace(tableData[0]);
+
+    const treeWithProof = await anchorData(tableData, config.anchorType, config.proofable.token, log.getLevel() === 'trace');
+    if (debug) {
+        console.log(treeWithProof);
+        console.log(Object.keys(treeWithProof));
+    }
+
+    const proof = treeWithProof.proofs[0];
+    const proofId = proof.id;
+    /* await module.exports.saveproofToDB(
+        treeWithProof,
+        tableDef.tableOwner,
+        tableDef.tableName,
+        tableData,
+        'AdHoc',
+        whereClause,
+        includeScn,
+        columnList,
+        keyColumn
+    );
+    log.info(`Proof ${proofId} created and stored to DB`);
+    if (validate) {
+        await module.exports.createProofFile(treeWithProof, validate, includeRowIds, verbose);
+        log.info('Proof written to ', validate);
+    } */
+
+    return (proofId);
+}
+
+async function getTableData({
+    connection,
+    tableName,
+    whereClause,
+    columnList,
+    keyColumn
+}) {
+    let where = '';
+    let rowKey = keyColumn;
+    if (!keyColumn || keyColumn === 'RID') {
+        columnList = '%% physloc %% AS RID,' + columnList;
+        rowKey = 'RID';
+    }
+    const keyValues = [];
+    if (whereClause) {
+        where = 'WHERE ' + whereClause;
+    }
+    const sql = `SELECT ${columnList} 
+                 FROM ${tableName} 
+                ${where}`;
+
+    log.trace(sql);
+    console.log(connection);
+    const output = await connection.query(sql);
+    for (let rowno = 0; rowno < output.recordset.length; rowno++) {
+        const row = output.recordset[rowno];
+        if (!(rowKey in row)) {
+            throw Error(`key column ${keyColumn} not found in table`);
+        }
+        const key = row[rowKey];
+        const value = row;
+        keyValues.push({
+            key,
+            value
+        });
+    }
+    return (keyValues);
+}
 
 async function createDemoUser(dbaConnection, flags) {
     log.info('Creating user and schema');
@@ -62,6 +319,7 @@ async function createDemoUser(dbaConnection, flags) {
     `);
     sqls.push(`CREATE DATABASE ${demoUser}
     `);
+    sqls.push(`ALTER AUTHORIZATION ON DATABASE::${demoUser} TO ${flags.provendbUser}`);
     sqls.push(`USE ${demoUser}
     `);
     sqls.push(`CREATE TABLE contractsTable(
@@ -96,9 +354,9 @@ async function createDemoUser(dbaConnection, flags) {
 async function createUser(dbaConnection, flags) {
     log.info('Creating user and schema');
     const sqls = [];
-    sqls.push(`CREATE LOGIN ${flags.provendbUser} WITH PASSWORD='${flags.provendbPassword}'`);
-    sqls.push(`CREATE USER ${flags.provendbUser} FOR LOGIN ${flags.provendbUser} WITH DEFAULT_SCHEMA=${flags.provendbUser}`);
     sqls.push(`CREATE DATABASE ${flags.provendbUser} `);
+    sqls.push(`CREATE LOGIN ${flags.provendbUser} WITH PASSWORD='${flags.provendbPassword}', DEFAULT_DATABASE=${flags.provendbUser}`);
+    sqls.push(`CREATE USER ${flags.provendbUser} FOR LOGIN ${flags.provendbUser}`);
     sqls.push(`ALTER AUTHORIZATION ON DATABASE::${flags.provendbUser} TO ${flags.provendbUser}`);
 
     for (let sqli = 0; sqli < sqls.length; sqli++) {
@@ -177,7 +435,7 @@ async function createTables(dbaConnection, flags) {
         @tablename    VARCHAR(4000),
         @columnlist   VARCHAR(4000) = '*',
         @whereclause  VARCHAR (4000) = NULL,
-        @keyColumn    VARCHAR (4000) = 'ROWID'  ) 
+        @keyColumn    VARCHAR (4000) = 'RID'  ) 
         AS BEGIN
         DECLARE @l_id    numeric;
         DECLARE @l_json  VARCHAR(4000);
@@ -285,7 +543,7 @@ function sleep(ms) {
     });
 }
 
-async function connectSQLServer(flags) {
+async function connectDBA(flags) {
     if (flags.verbose) {
         log.setLevel('trace');
     }
@@ -294,7 +552,7 @@ async function connectSQLServer(flags) {
         // make sure that any items are correctly URL encoded in the connection string
         const connectionString = `${flags.sqlConnect};User Id=${flags.dbaUserName};Password=${flags.dbaPassword}`;
         log.trace('connection String: ', connectionString);
-        const dbaConnection = await sqlConnection.connect(connectionString);
+        const dbaConnection = await mssql.connect(connectionString);
         const checkOutput = await dbaConnection.query('SELECT current_timestamp AS timestamp');
         const connectionTimestamp = checkOutput.recordset[0].timestamp;
         log.trace('Connected at ', connectionTimestamp);
