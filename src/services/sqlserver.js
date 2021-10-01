@@ -28,7 +28,8 @@ const {
 } = require('tmp');
 const log = require('simple-node-logger').createSimpleLogger();
 const {
-    anchorData
+    anchorData,
+    validateProofAndData
 } = require('./provendb');
 const {
     flags
@@ -103,7 +104,7 @@ module.exports = {
                         log.info('Processing request ', row.requestjson);
                         if (row.requesttype === 'ANCHOR') {
                             await processAnchorRequest(connection, config, row.id, JSON.parse(row.requestjson));
-                        } else if (requestType === 'VALIDATE') {
+                        } else if (row.requesttype === 'VALIDATE') {
                             await processValidateRequest(connection, config, row.id, JSON.parse(row.requestjson));
                         }
                     }
@@ -155,11 +156,8 @@ async function processAnchorRequest(connection, config, id, requestJson) {
     }
 }
 
-async function processValidateRequest(connection, config, id, requestJson, verbose) {
-    if (verbose) {
-        log.setLevel('trace');
-    }
-    log.trace('json: ', requestJson);
+async function processValidateRequest(connection, config, id, requestJson) {
+    log.trace('validate Request: ', requestJson);
     let proofId;
 
     if (!('proofId' in requestJson)) {
@@ -168,21 +166,63 @@ async function processValidateRequest(connection, config, id, requestJson, verbo
     }
     try {
         proofId = requestJson.proofId;
-        const validateOracleProofOut = await module.exports.validateOracleProof(proofId, `${proofId}.provendb`, verbose);
-        log.trace(validateOracleProofOut);
-        if (validateOracleProofOut.proofIsValid) {
-            await completeRequest(connection, id, proofId, validateOracleProofOut.messages);
+        const validateProofOut = await validateProof(connection, proofId,`${proofId}.provendb`);
+        log.trace(validateProofOut);
+        if (validateProofOut.proofIsValid) {
+            await completeRequest(connection, id, proofId, validateProofOut.messages);
         } else {
-            await invalidateRequest(connection, id, JSON.stringify(validateOracleProofOut.messages));
+            await invalidateRequest(connection, id, JSON.stringify(validateProofOut.messages));
         }
-        await connection.query(
-            `UPDATE provendbcontrol 
-                SET last_checked=CURRENT_TIMESTAMP 
+        /* await connection.query(
+            `UPDATE provendbcontrol
+                SET last_checked=CURRENT_TIMESTAMP
               WHERE proofId=:1`, [proofId]
-        );
+        ); */
     } catch (error) {
         log.error('Error processing request: ', error.message);
         await invalidateRequest(connection, id, error.message);
+    }
+}
+
+async function validateProof(connection, proofId, outputFile) {
+    log.trace('validate Proof');
+
+    const {
+        proof,
+        metadata
+    } = await getProofFromDB(connection, proofId);
+    log.trace('proof ', Object.keys(proof), ' metadata ', metadata);
+
+    const keyvalues = await getTableData({
+        connection,
+        tableName: metadata.tableName,
+        whereClause: metadata.whereClause,
+        columnList: metadata.columnList,
+        keyColumn: metadata.keyColumn
+    });
+    log.trace(keyvalues[0]);
+    const validateOut = await validateProofAndData(proofId, proof, keyvalues, metadata, outputFile,log.getLevel());
+    log.trace(validateOut);
+    return (validateOut);
+}
+
+async function getProofFromDB(connection, proofId) {
+    log.trace('Retrieving proof from db');
+    try {
+        const sql = `SELECT proof, metadata
+                 FROM provendbcontrol
+                WHERE proofid = @proofid`;
+        const proofData = await connection.request().input('proofid', mssql.NVarChar, proofId).query(sql);
+        if (proofData.recordset.length === 0) {
+            throw Error(`Cannot file proof ${proofid} in database`);
+        }
+        return ({
+            proof: JSON.parse(proofData.recordset[0].proof),
+            metadata: JSON.parse(proofData.recordset[0].metadata)
+        });
+    } catch (error) {
+        log.error(error.message, ' while retrieving proof');
+        throw Error(error);
     }
 }
 
@@ -213,6 +253,45 @@ async function completeRequest(connection, id, proofId, messages = []) {
     log.info('Request ', id, ' succeeded');
 }
 
+async function saveproofToDB(connection, treeWithProof, tableName, whereClause, columnList, keyColumn) {
+    try {
+        const proofId = treeWithProof.proofs[0].id;
+        log.info(`Saving proof ${proofId} to db`);
+        // Create an array of bind variables for array insert
+
+        const metadata = {
+            tableName,
+            whereClause,
+            columnList,
+            keyColumn,
+            timestamp: new Date()
+        };
+
+        const request = await connection.request();
+        request.input('proofId', mssql.VarChar, proofId);
+        request.input('proof', mssql.NVarChar, JSON.stringify(treeWithProof));
+        request.input('tableName', mssql.VarChar, tableName);
+        request.input('whereClause', mssql.VarChar, whereClause);
+        request.input('keyColumn', mssql.VarChar, keyColumn);
+        request.input('columnList', mssql.VarChar, columnList);
+        request.input('metadata', mssql.VarChar, JSON.stringify(metadata));
+
+        const sql = `
+           INSERT INTO provendbcontrol 
+                (proofId, proof, table_name, 
+                end_time, whereclause,keycolumn,columnList, metadata) 
+            VALUES(@proofId,@proof,@tableName, getdate(), @whereClause,
+                @keyColumn, @columnList,@metadata)`;
+        log.trace(sql);
+        await request.query(sql);
+        log.trace(`Proof ${proofId} saved to database`);
+    } catch (error) {
+        log.error(error.message);
+        log.trace(error.trace);
+        throw (error);
+    }
+}
+
 async function anchor1Table({
     connection,
     config,
@@ -221,17 +300,6 @@ async function anchor1Table({
     columnList,
     keyColumn
 }) {
-    /* const splitTableName = userNameTableName.split('.');
-    if (splitTableName.length != 2) {
-        const errm = 'Table Definitions should be in user.table format';
-        log.error(errm);
-        throw Error(errm);
-    }
-    const userName = splitTableName[0];
-    const tableName = splitTableName[1];
-    const tableDef = await module.exports.getTableDef(userName, tableName, verbose); */
-
-
     log.trace('Processing ', tableName);
     const tableData = await getTableData({
         connection,
@@ -244,29 +312,14 @@ async function anchor1Table({
 
     const treeWithProof = await anchorData(tableData, config.anchorType, config.proofable.token, log.getLevel() === 'trace');
     if (debug) {
-        console.log(treeWithProof);
-        console.log(Object.keys(treeWithProof));
+        console.log('tree keys ', Object.keys(treeWithProof));
     }
 
     const proof = treeWithProof.proofs[0];
     const proofId = proof.id;
-    /* await module.exports.saveproofToDB(
-        treeWithProof,
-        tableDef.tableOwner,
-        tableDef.tableName,
-        tableData,
-        'AdHoc',
-        whereClause,
-        includeScn,
-        columnList,
-        keyColumn
-    );
-    log.info(`Proof ${proofId} created and stored to DB`);
-    if (validate) {
-        await module.exports.createProofFile(treeWithProof, validate, includeRowIds, verbose);
-        log.info('Proof written to ', validate);
-    } */
+    await saveproofToDB(connection, treeWithProof, tableName, whereClause, columnList, keyColumn);
 
+    log.info(`Proof ${proofId} created and stored to DB`);
     return (proofId);
 }
 
@@ -292,7 +345,7 @@ async function getTableData({
                 ${where}`;
 
     log.trace(sql);
-    console.log(connection);
+
     const output = await connection.query(sql);
     for (let rowno = 0; rowno < output.recordset.length; rowno++) {
         const row = output.recordset[rowno];
@@ -378,13 +431,13 @@ async function createTables(dbaConnection, flags) {
     sqls.push(` 
     CREATE TABLE provendbcontrol (
         proofid      VARCHAR(256) PRIMARY KEY,
-        owner_name   VARCHAR(128) NOT NULL,
         table_name   VARCHAR(128) NOT NULL,
-        start_time   DATE NOT NULL,
         end_time     DATE NOT NULL,
-        proof        NVARCHAR NOT NULL CHECK (ISJSON(proof)=1),
-        proofType    VARCHAR(30) NOT NULL,
+        proof        NVARCHAR(max) NOT NULL CHECK (ISJSON(proof)=1),
+        proofType    VARCHAR(30) NOT NULL DEFAULT('ADHOC'),
         whereclause  VARCHAR(2000),
+        keycolumn    VARCHAR(2000),
+        columnList   VARCHAR(2000),
         metadata     VARCHAR(4000) CHECK (ISJSON(metadata)=1),
         last_checked DATE
     )
@@ -392,9 +445,7 @@ async function createTables(dbaConnection, flags) {
     sqls.push(` 
     CREATE INDEX provendbcontrol_i1 ON
     provendbcontrol (
-        owner_name,
         table_name,
-        start_time,
         end_time)
     `);
     sqls.push(` 
