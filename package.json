@@ -4,7 +4,7 @@
     "version": "0.1.0",
     "author": "Guy Harrison",
     "bin": {
-        "provendb-oracle": "./run.js"
+        "provendb-sqlserver": "./run.js"
     },
     "bugs": "https://github.com/SouthbankSoftware/provendb-sqlserver/issues",
     "dependencies": {
