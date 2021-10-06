@@ -157,16 +157,16 @@ async function processAnchorRequest(connection, config, id, requestJson) {
 }
 
 async function processValidateRequest(connection, config, id, requestJson) {
-    log.trace('validate Request: ', requestJson);
-    let proofId;
-
-    if (!('proofId' in requestJson)) {
-        await invalidateRequest(id, 'Must specify proofId in request');
-        return;
-    }
     try {
+        log.trace('validate Request: ', requestJson);
+        let proofId;
+
+        if (!('proofId' in requestJson)) {
+            await invalidateRequest(id, 'Must specify proofId in request');
+            return;
+        }
         proofId = requestJson.proofId;
-        const validateProofOut = await validateProof(connection, proofId,`${proofId}.provendb`);
+        const validateProofOut = await validateProof(connection, proofId, `${proofId}.provendb`);
         log.trace(validateProofOut);
         if (validateProofOut.proofIsValid) {
             await completeRequest(connection, id, proofId, validateProofOut.messages);
@@ -185,25 +185,32 @@ async function processValidateRequest(connection, config, id, requestJson) {
 }
 
 async function validateProof(connection, proofId, outputFile) {
-    log.trace('validate Proof');
+    try {
+        log.trace('validate Proof');
 
-    const {
-        proof,
-        metadata
-    } = await getProofFromDB(connection, proofId);
-    log.trace('proof ', Object.keys(proof), ' metadata ', metadata);
+        const {
+            proof,
+            metadata
+        } = await getProofFromDB(connection, proofId);
+        log.trace('proof ', Object.keys(proof), ' metadata ', metadata);
 
-    const keyvalues = await getTableData({
-        connection,
-        tableName: metadata.tableName,
-        whereClause: metadata.whereClause,
-        columnList: metadata.columnList,
-        keyColumn: metadata.keyColumn
-    });
-    log.trace(keyvalues[0]);
-    const validateOut = await validateProofAndData(proofId, proof, keyvalues, metadata, outputFile,log.getLevel());
-    log.trace(validateOut);
-    return (validateOut);
+        const keyvalues = await getTableData({
+            connection,
+            tableName: metadata.tableName,
+            whereClause: metadata.whereClause,
+            columnList: metadata.columnList,
+            keyColumn: metadata.keyColumn
+        });
+        log.trace(keyvalues[0]);
+        log.trace(keyvalues[49]);
+        log.trace(keyvalues.length,' key values');
+        const validateOut = await validateProofAndData(proofId, proof, keyvalues, metadata, outputFile, log.getLevel());
+        log.trace(validateOut);
+        return (validateOut);
+    } catch (error) {
+        log.error(error.message);
+        throw Error(error);
+    }
 }
 
 async function getProofFromDB(connection, proofId) {
@@ -335,6 +342,8 @@ async function getTableData({
     if (!keyColumn || keyColumn === 'RID') {
         columnList = '%% physloc %% AS RID,' + columnList;
         rowKey = 'RID';
+    } else {
+        columnList = keyColumn + ',' + columnList;
     }
     const keyValues = [];
     if (whereClause) {
@@ -470,7 +479,7 @@ async function createTables(dbaConnection, flags) {
     CREATE TABLE provendbRequests (
         id NUMERIC  NOT NULL IDENTITY PRIMARY KEY,
         requestType VARCHAR(12) DEFAULT('ANCHOR'),
-        requestJSON VARCHAR(4000) ,
+        requestJSON VARCHAR(4000) NOT NULL,
         status      VARCHAR(12) DEFAULT('NEW'),
         statusDate  DATE DEFAULT (GETDATE()),
         messages    VARCHAR(4000),

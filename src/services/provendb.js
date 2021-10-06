@@ -51,9 +51,9 @@ module.exports = {
             throw new Error(error);
         }
     },
-    validateProofAndData: async (proofId, proof, keyvalues, metadata, outputFile,logLevel) => {
+    validateProofAndData: async (proofId, proof, keyvalues, metadata, outputFile, logLevel) => {
         log.setLevel(logLevel);
-        const messages=[];
+        const messages = [];
         let message;
         const validateOut = await validateData(proof, keyvalues, outputFile, metadata, log.getLevel());
         log.trace(validateOut);
@@ -82,7 +82,7 @@ module.exports = {
             log.error(message);
             messages.push(message);
             messages.push({
-                badKeys: validateDataOut.badKeys
+                badKeys: validateOut.badKeys
             });
             proofIsValid = false;
         }
@@ -105,6 +105,7 @@ async function validateData(proof, inputKeyValues, outputFile, metadata, logLeve
     const proofRoot = proof.proofs[0].hash;
     if (calculatedRoot === proofRoot) {
         log.info('PASS: data hash matches proof hash');
+        log.trace(`${calculatedRoot} === ${proofRoot}`);
         goodProof = true;
     } else {
         log.error(`FAIL: proof hash does not match data hash proof: ${proofRoot}, data: ${calculatedRoot}`);
@@ -172,12 +173,19 @@ function makeTree(inputkeyValues) {
         log.trace('makeTree');
         const builder = new merkle.Builder('sha-256');
         const keyValues = [];
-        inputkeyValues.forEach((keyvalue) => {
+        for (let kvi = 0; kvi < inputkeyValues.length; kvi++) {
+            const keyvalue = inputkeyValues[kvi];
+            const value = JSON.stringify(keyvalue.value);
             keyValues.push({
                 key: keyvalue.key,
-                value: Buffer.from(keyvalue.value.toString())
+                value: Buffer.from(value)
             });
-        });
+            if (kvi === 0) {
+                log.trace(value);
+                log.trace(Buffer.from(value));
+            }
+        }
+        log.trace(inputkeyValues[0]);
         log.trace(keyValues[0]);
         builder.addBatch(keyValues);
         tree = builder.build();
@@ -207,24 +215,31 @@ function findVal(object, key) {
 
 function getBadKeys(proof, tree) {
     const badKeyList = [];
-    const proofLeaves = proof.getLeaves();
-    const treeLeaves = tree.getLeaves();
+
+    const proofLeaves = proof.layers[0];
+    const treeLeaves = tree.layers[0];
+
     if (proofLeaves.length !== treeLeaves.length) {
         log.info('Mismatch in number of keys when validating data');
         badKeyList.push('different number of keys in proof and validated data');
     } else {
         for (leafId = 0; leafId < proofLeaves.length; leafId++) {
-            if (treeLeaves.length > leafId) {
-                const proofLeaf = proofLeaves[leafId];
-                const treeLeaf = treeLeaves[leafId];
-                if (proofLeaf.key !== treeLeaf.key) {
-                    log.info('Keys do not match in leaf of tree');
-                    badKeyList.push(proofLeaf.key);
-                    badKeyList.push(treeLeaf.key);
-                } else if (proofLeaf.value !== treeLeaf.value) {
-                    badKeyList.push(proofLeaf.key);
-                    log.error('Hash mismatch on key ', proofLeaf.key);
-                }
+            const proofLeaf = {};
+            const treeLeaf = {};
+            proofLeaf.key = proofLeaves[leafId].split(':')[0];
+            proofLeaf.value = proofLeaves[leafId].split(':')[1];
+            treeLeaf.key = treeLeaves[leafId].split(':')[0];
+            treeLeaf.value = treeLeaves[leafId].split(':')[1];
+
+            if (proofLeaf.key !== treeLeaf.key) {
+                log.info('Keys do not match in leaf of tree');
+                badKeyList.push(proofLeaf.key);
+                badKeyList.push(treeLeaf.key);
+            } else if (proofLeaf.value !== treeLeaf.value) {
+                badKeyList.push(proofLeaf.key);
+                log.error('Hash mismatch on key ', proofLeaf.key);
+            } else {
+                log.trace(`leaf match: ${leafId} ${proofLeaf} ${treeLeaf}`);
             }
         }
     }

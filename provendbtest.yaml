@@ -2,9 +2,9 @@ dbConnection:
   connectionType: SQLSERVER
   connectionString: >-
     Server=localhost,1433;Encrypt=false;User
-    Id=provendbTest8215;Password=DBEnvy2016
+    Id=provendbTest4503;Password=DBEnvy2016
 anchorType: HEDERA
 proofable:
   token: >-
     eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhbmNob3IiLCJleHAiOjE3ODA5ODE5MzMsImp0aSI6ImFhMW5nbnFtNDVpMHFtNHIxMHZmeGp1ZiIsInN1YiI6InUya3o3ZTc1NnNuajF6NTFid2g1bTZuZyIsInNjb3BlIjoiMCIsInJvbGUiOiJGcmVlIn0.MtooMUPuhCnve1DwJKqXQyh324I2x_9_ASH-xSs3j-0
-  endpoint: 'api.proofable.io:443'
+  endpoint: 'anchor.proofable.io:443'

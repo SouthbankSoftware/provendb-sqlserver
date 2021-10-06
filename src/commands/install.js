@@ -46,6 +46,7 @@ class InstallCommand extends Command {
                 const dbConnection = {connectionType:'SQLSERVER', connectionString};
                 await saveConfig(flags.config, dbConnection, flags.verbose);
             }
+            log.info('Install complete');
         } catch (error) {
             log.error('Failed to install:');
             log.error(error.message);
