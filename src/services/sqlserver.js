@@ -613,6 +613,7 @@ async function connectDBA(flags) {
         const connectionString = `${flags.sqlConnect};User Id=${flags.dbaUserName};Password=${flags.dbaPassword}`;
         log.trace('connection String: ', connectionString);
         const dbaConnection = await mssql.connect(connectionString);
+        log.trace('Connected');
         const checkOutput = await dbaConnection.query('SELECT current_timestamp AS timestamp');
         const connectionTimestamp = checkOutput.recordset[0].timestamp;
         log.trace('Connected at ', connectionTimestamp);
