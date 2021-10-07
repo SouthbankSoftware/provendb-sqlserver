@@ -49,7 +49,7 @@ describe('provendb-oracle Anchor tests', () => {
         }
         const provendbUser = 'provendbTest' + Math.round(Math.random() * 10000);
 
-        let installCmd = `install --config=testConfig.yaml --dbaPassword=Jagat@2016 --dbaUserName=SA --provendbPassword=DBEnvy2016 --provendbUser=${provendbUser} \
+        let installCmd = `install --config=testConfig.yaml --dbaPassword=DBEnvy2016 --dbaUserName=SA --provendbPassword=DBEnvy2016 --provendbUser=${provendbUser} \
                             --dropExisting --createDemoAccount --config=testConfig.yaml`;
  
         console.log(installCmd);

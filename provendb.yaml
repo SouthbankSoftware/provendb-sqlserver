@@ -1,6 +1,6 @@
 dbConnection:
   connectionType: SQLSERVER
-  connectionString: 'Server=localhost,1433;Encrypt=false;User Id=provendb;Password=DBEnvy2016'
+  connectionString: 'Server=guy13,1433;Encrypt=false;User Id=provendb;Password=DBEnvy2016'
 anchorType: HEDERA
 proofable:
   token: >-

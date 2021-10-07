@@ -1,0 +1,3 @@
+b548cab595c7dfcaf2378558798e9de2d8ad9902 127405893 provendb-sqlserver-linux
+bbf623d4fcbff5d76c89b43c59bb8839f991d24e 127520525 provendb-sqlserver-macos
+7c1c269d0e046b6a53501657ad4b82c9a48fc561 123317439 provendb-sqlserver-win.exe
