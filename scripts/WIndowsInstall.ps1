@@ -1,0 +1,2 @@
+& ([ScriptBlock]::Create((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/SouthbankSoftware/provendb-sqlserver/main/installation/install.ps1')))
+                            

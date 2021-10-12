@@ -2,7 +2,7 @@ dbConnection:
   connectionType: SQLSERVER
   connectionString: >-
     Server=localhost,1433;Encrypt=false;User
-    Id=provendbTest8215;Password=DBEnvy2016
+    Id=provendbTest9514;Password=DBEnvy2016
 anchorType: HEDERA
 proofable:
   token: >-
