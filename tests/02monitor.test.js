@@ -18,9 +18,11 @@ const exec = promisify(require('child_process').exec);
 
 
 let connection;
+let provendbSQLServerOut;
 
 
 const debug = false;
+
 
 
 let testAccount;
@@ -30,8 +32,8 @@ let testAccount;
 describe('provendb-sqlserver Monitor tests', () => {
     beforeAll(async () => {
         await killMonitor();
-        const monitorCmd = 'monitor -i 4 -v -m 3600 --config=testConfig.yaml';
-        const output2 = provendbSQLServer(monitorCmd);
+        const monitorCmd = 'monitor -i 4 -v -m 0 --config=testConfig.yaml';
+        provendbSQLServerOut = provendbSQLServer(monitorCmd);
 
         const config = yaml.safeLoad(fs.readFileSync('testConfig.yaml', 'utf8'));
         if (debug) console.log(config);
@@ -54,6 +56,7 @@ describe('provendb-sqlserver Monitor tests', () => {
 
     afterAll(async () => {
         await killMonitor();
+        if (debug) console.log(provendbSQLServerOut);
     });
 
     test('Test help', async () => {
@@ -62,7 +65,7 @@ describe('provendb-sqlserver Monitor tests', () => {
     });
 
     test('Anchor', async () => {
-        jest.setTimeout(60000);
+        jest.setTimeout(120000);
         let sql = `EXEC [dbo].[fanchorrequest] '${testAccount}demo.dbo.contractstable' , 'contractData,metaData', 'contractId BETWEEN 0 and 100' , 'CONTRACTID'`;
         let results = await connection.query(sql);
         const requestId = results.recordset[0][''];
@@ -71,7 +74,7 @@ describe('provendb-sqlserver Monitor tests', () => {
         while (status === 'NEW') {
             results = await connection.query(sql);
             status = results.recordset[0].status;
-            console.log(status);
+            if (debug) console.log(status);
             await sleep(5000);
         }
         if (debug) console.log(results);
@@ -80,7 +83,7 @@ describe('provendb-sqlserver Monitor tests', () => {
     });
 
     test('Validate', async () => {
-        jest.setTimeout(60000);
+        jest.setTimeout(120000);
         let sql = `SELECT proofId from provendbrequests where id=(
                             SELECT MAX(id) FROM provendbrequests
                             WHERE requestType='ANCHOR'
@@ -98,14 +101,58 @@ describe('provendb-sqlserver Monitor tests', () => {
         while (status === 'NEW') {
             results = await connection.query(sql);
             status = results.recordset[0].status;
-            console.log(status);
+            if (debug) console.log(status);
             await sleep(5000);
         }
         if (debug) console.log(results);
         await sleep(1500);
         expect(status).toEqual('SUCCESS');
     });
+
+    test('Tampering', async () => {
+        jest.setTimeout(120000);
+
+        let sql = `UPDATE ${testAccount}demo.dbo.contractstable
+                      SET METADATA='{"info":"'+CAST(getDate() AS VARCHAR(100))+'"}'
+                    WHERE CONTRACTID=11`;
+        let results = await connection.query(sql);
+        sql = `UPDATE ${testAccount}demo.dbo.contractstable
+                  SET mytimestamp=getdate()
+                WHERE CONTRACTID=49;`;
+        results = await connection.query(sql);
+        if (debug) console.log(results);
+        sql = `SELECT proofId from provendbrequests where id=(
+                        SELECT MAX(id) FROM provendbrequests
+                        WHERE requestType='ANCHOR'
+                        AND status='SUCCESS')`;
+        results = await connection.query(sql);
+        const proofId = results.recordset[0].proofId;
+        if (debug) console.log(proofId);
+        sql = `EXEC [dbo].[fvalidaterequest]  '${proofId}'`;
+        results = await connection.query(sql);
+        if (debug) console.log(results);
+        const requestId = results.recordset[0][''];
+        sql = `select * from provendbrequests where id=${requestId}`;
+        let status = 'NEW';
+        while (status === 'NEW') {
+            results = await connection.query(sql);
+            status = results.recordset[0].status;
+            if (debug) console.log(status);
+            await sleep(5000);
+        }
+        if (debug) console.log(results);
+        status = results.recordset[0].status;
+        const messages = JSON.parse(results.recordset[0].messages);
+        if (debug) console.log(messages);
+        const badkeys = messages[1];
+        if (debug) console.log(badkeys);
+        expect(badkeys.badKeys[0]).toEqual('11');
+        expect(badkeys.badKeys.length).toEqual(1);
+        expect(status).toEqual('FAILED');
+    });
 });
+
+
 
 async function killMonitor() {
     try {

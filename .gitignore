@@ -104,3 +104,5 @@ dist
 .tern-port
 ebd4fd2427506bfaacd2db6d5698bc80f7b512908c7663490d2c5d3f02c45584:fCvewLbytHkby59yWp0qW.provendb
 demo/Untitled.json
+
+*.provendb
