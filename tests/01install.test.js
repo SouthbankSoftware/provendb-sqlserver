@@ -12,6 +12,7 @@ const {
     getParameters
 } = require('./testCommon');
 const execSync = require('child_process').execSync;
+const os=require('os');
 
  
 
@@ -25,6 +26,8 @@ const usePaidToken = false;
 
 // This is a paid key.  But the default key created by P4O should be ok too - it's freeware.
 const prdAnchorKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhbmNob3IiLCJleHAiOjE3ODA0NDIyNzEsImp0aSI6ImF2bDc1MHlucmx1cmo3ajZjOHR1bTQxeiIsInN1YiI6InV2cHgzYjVjNXV2bXduOTRxYTd2NG5kciIsInNjb3BlIjoiMCIsInJvbGUiOiJQYWlkIn0.mUQnGKOqzcS5IqXeSAGJ6H2DY2f_bL1IaeKzKz7D4K0';
+
+let windowsConnect="Server=localhost\\SQLEXPRESS;1433;Encrypt=false;Trusted_Connection=True;TrustServerCertificate=True";
 
 describe('provendb-sqlserver install tests', () => {
     beforeAll(() => {});
@@ -51,6 +54,9 @@ describe('provendb-sqlserver install tests', () => {
 
         let installCmd = `install --config=testConfig.yaml --dbaPassword=DBEnvy2016 --dbaUserName=SA --provendbPassword=DBEnvy2016 --provendbUser=${provendbUser} \
                             --dropExisting --createDemoAccount --config=testConfig.yaml`;
+        if (os.type()==='Windows_NT') {
+            installCmd+=` --sqlConnect="${windowsConnect}"`;
+        }
  
         console.log(installCmd);
         const output = await provendbSQLServer(installCmd);

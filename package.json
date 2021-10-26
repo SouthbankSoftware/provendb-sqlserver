@@ -30,7 +30,8 @@
         "provendb-sdk-node": "0.1.0-alpha.2",
         "simple-node-logger": "^18.12.24",
         "sprintf-js": "^1.1.2",
-        "tmp": "^0.2.1"
+        "tmp": "^0.2.1",
+        "yarn": "^1.22.17"
     },
     "devDependencies": {
         "@babel/cli": "^7.12.1",
@@ -107,7 +108,7 @@
         "build:deb": "oclif-dev pack:deb",
         "prepack": "oclif-dev manifest && oclif-dev readme",
         "testo": "nyc mocha --forbid-only \"test/**/*.test.js\"",
-        "test": "MODE=local jest  --runInBand --forceExit --detectOpenHandles",
+        "test": "jest  --runInBand --forceExit --detectOpenHandles",
         "version": "oclif-dev readme && git add README.md"
     }
 }
