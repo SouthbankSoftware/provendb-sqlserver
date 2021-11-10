@@ -27,7 +27,7 @@ SELECT @proofid=proofId from provendbrequests where id=(
         AND status='SUCCESS'
 )
 
-EXEC [dbo].[fvalidaterequest]  @proofid
+EXEC [dbo].[fvalidaterequestId]  @proofid
 
 
 /* Run this until the validate is complete */
