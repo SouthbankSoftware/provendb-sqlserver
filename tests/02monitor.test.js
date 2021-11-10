@@ -109,6 +109,32 @@ describe('provendb-sqlserver Monitor tests', () => {
         expect(status).toEqual('SUCCESS');
     });
 
+    test('ValidateById', async () => {
+        jest.setTimeout(120000);
+        let sql = `  SELECT MAX(id) requestId FROM provendbrequests
+                            WHERE requestType='ANCHOR'
+                            AND status='SUCCESS'`;
+        let results = await connection.query(sql);
+        if (debug) console.log(results);
+        const requestId = results.recordset[0].requestId;
+        if (debug) console.log(requestId);
+        sql = `EXEC [dbo].[fvalidaterequestId]  '${requestId}'`;
+        results = await connection.query(sql);
+        if (debug) console.log(results);
+        const requestId2 = results.recordset[0][''];
+        sql = `select * from provendbrequests where id=${requestId2}`;
+        let status = 'NEW';
+        while (status === 'NEW') {
+            results = await connection.query(sql);
+            status = results.recordset[0].status;
+            if (debug) console.log(status);
+            await sleep(5000);
+        }
+        if (debug) console.log(results);
+        await sleep(1500);
+        expect(status).toEqual('SUCCESS');
+    });
+
     test('Tampering', async () => {
         jest.setTimeout(120000);
 

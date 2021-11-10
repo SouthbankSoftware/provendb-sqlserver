@@ -1,3 +1,4 @@
+/* eslint-disable no-tabs */
 /*
  * Encapsulates all the relevant functions for interacting with SQL Server.
  *
@@ -203,7 +204,7 @@ async function validateProof(connection, proofId, outputFile) {
         });
         log.trace(keyvalues[0]);
         log.trace(keyvalues[49]);
-        log.trace(keyvalues.length,' key values');
+        log.trace(keyvalues.length, ' key values');
         const validateOut = await validateProofAndData(proofId, proof, keyvalues, metadata, outputFile, log.getLevel());
         log.trace(validateOut);
         return (validateOut);
@@ -537,6 +538,34 @@ async function createTables(dbaConnection, flags) {
         ;
         SELECT SCOPE_IDENTITY();
     END
+    `);
+    sqls.push(` 
+    CREATE PROCEDURE  [dbo].[fvalidateRequestId] ( @requestid varchar(512))  
+    AS
+    BEGIN
+        DECLARE @proofId  VARCHAR(4000);
+		DECLARE @type VARCHAR(12);
+        DECLARE @status VARCHAR(12);
+		DECLARE @l_json VARCHAR(2000);
+		SELECT @type=pr.requestType,@proofid=proofid,@status=status 
+		 FROM provendbrequests pr
+		WHERE id=@requestid;
+
+		IF (@type='ANCHOR' AND @status='SUCCESS') 
+		BEGIN
+
+    
+			SET @l_json ='{"proofId":"' + @proofId + '"}';
+			INSERT INTO provendbrequests
+				( requesttype, requestjson )
+			VALUES
+				( 'VALIDATE', @l_json )
+			;
+			SELECT SCOPE_IDENTITY();
+		END;
+		ELSE
+			SELECT 'ERROR: request is not an anchor or did not succeed';
+    END;
     `);
     for (let sqli = 0; sqli < sqls.length; sqli++) {
         const sql = sqls[sqli];
