@@ -73,11 +73,10 @@ class MonitorCommand extends Command {
 //  TODO: write test cases for monitor requests table
 //  TODO: write test cases for columnLists
 
-MonitorCommand.description = `Monitor the database for changes.
+MonitorCommand.description = `Monitor the database for commands.
 
-Monitor checks tables listed in the configuration file for changes.   
-Any changes to rows found will be anchored to the blockchain defined
-in the configuration file. 
+provendb-sqlserver will await requests made through the stored procedure
+interface and execute them. 
 `;
 
 MonitorCommand.flags = {
@@ -100,12 +99,13 @@ MonitorCommand.flags = {
         string: 'c',
         description: 'config file location',
         required: false
-    }),
+    })/*,
     validateInterval: flags.integer({
         string: 'k',
         description: 're-validate proofs which have not been validated after this many seconds',
         required: false
-    })
+    })*/
+    // TODO: Implement the validateInterval flag
 };
 
 module.exports = MonitorCommand;
