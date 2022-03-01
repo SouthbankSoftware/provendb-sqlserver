@@ -3,6 +3,14 @@
  
 cp node_modules/open/xdg-open dist 
 cp node_modules/keytar/build/Release/keytar.node dist
+
+
+pkg --options max_old_space_size=8192 --out-path dist -t node12-win . 
+cd dist
+zip provendb-sqlserver-windows.zip provendb-sqlserver.exe  keytar.node xdg-open
+rm provendb-sqlserver.exe
+
+cd ..
 pkg  --options max_old_space_size=8192 -t node12-linux -o dist/provendb-sqlserver-linux . 
 cd dist
 mv provendb-sqlserver-linux provendb-sqlserver
@@ -18,3 +26,4 @@ chmod 755 provendb-sqlserver
 tar zcvf provendb-sqlserver-mac.tar.gz provendb-sqlserver
 
 rm provendb-sqlserver
+

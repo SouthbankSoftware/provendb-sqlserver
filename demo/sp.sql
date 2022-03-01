@@ -1,4 +1,4 @@
-
+/* Setup some useful variables */
 :setvar SQLCMDMAXVARTYPEWIDTH 256
 :setvar SQLCMDMAXFIXEDTYPEWIDTH 256
 
@@ -39,13 +39,10 @@ SELECT @requestId=MAX(id) from provendbrequests WHERE requestType='VALIDATE'
 SELECT * FROM provendbrequests where id=@requestId
 
 /* Tampering */
-UPDATE provendbdemo.dbo.contractstable
-   SET METADATA='{"info":"'+CAST(getDate() AS VARCHAR(100))+'"}'
+UPDATE provendbdemo.dbo.contractstable SET METADATA='{"info":"'+CAST(getDate() AS VARCHAR(100))+'"}'
 WHERE CONTRACTID=11;
 
-UPDATE provendbdemo.dbo.contractstable
-   SET mytimestamp=getdate()
-WHERE CONTRACTID=49;
+UPDATE provendbdemo.dbo.contractstable SET mytimestamp=getdate() WHERE CONTRACTID=49;
 
 select * from provendbdemo.dbo.contractstable
  where CONTRACTID IN (1,49);
@@ -69,3 +66,6 @@ DECLARE @requestId INT
 SELECT @requestId=MAX(id) from provendbrequests WHERE requestType='VALIDATE'
 
 SELECT * FROM provendbrequests where id=@requestId
+
+EXEC [dbo].[fvalidaterequestid] 1
+

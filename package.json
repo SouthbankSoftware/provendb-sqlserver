@@ -1,7 +1,7 @@
 {
     "name": "provendb-sqlserver",
     "description": "ProvenDB Connector for SQL Server",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "author": "Guy Harrison",
     "bin": {
         "provendb-sqlserver": "./run.js"
