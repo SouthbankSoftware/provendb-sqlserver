@@ -61,12 +61,18 @@ module.exports = {
         }
     },
     installPDB4SS: async (flags) => {
+
         if (flags.verbose) {
             log.setLevel('trace');
         }
-        const dbaConnection = await connectDBA(flags);
+        const {
+            dbaConnection,
+            dbaConnectionString,
+            provenConnectionString 
+        } = await connectDBA(flags);
         if (flags.dropExisting) {
             if (flags.createDemoAccount) {
+                
                 await dropDemoUser(dbaConnection, flags);
             }
         }
@@ -76,6 +82,7 @@ module.exports = {
         if (flags.createDemoAccount) {
             await createDemoUser(dbaConnection, flags);
         }
+        return(provenConnectionString)
     },
     processRequests: async (connection, config, verbose = false) => {
         if (verbose) {
@@ -373,7 +380,7 @@ async function getTableData({
 }
 
 async function createDemoUser(dbaConnection, flags) {
-    log.info('Creating user and schema');
+    log.info('Creating Demo user and schema');
     const demoUser = flags.provendbUser + 'demo';
     const sqls = [];
     sqls.push(`CREATE LOGIN ${demoUser} WITH PASSWORD='${flags.provendbPassword}'
@@ -639,16 +646,64 @@ async function connectDBA(flags) {
     log.info('Connecting to SQL Server');
     try {
         // make sure that any items are correctly URL encoded in the connection string
-        const connectionString = `${flags.sqlConnect};User Id=${flags.dbaUserName};Password=${flags.dbaPassword}`;
-        log.trace('connection String: ', connectionString);
-        const dbaConnection = await mssql.connect(connectionString);
+        const connectionParms = await getBestConnectionParms(flags);
+        const dbaConnectionString = `${connectionParms};User Id=${flags.dbaUserName};Password=${flags.dbaPassword}`;
+        const provenConnectionString=`${connectionParms};User Id=${flags.provendbUser};Password=${flags.provendbPassword}`;
+        log.trace('connection String: ', dbaConnectionString);
+        const dbaConnection = await mssql.connect(dbaConnectionString);
         log.trace('Connected');
         const checkOutput = await dbaConnection.query('SELECT current_timestamp AS timestamp');
         const connectionTimestamp = checkOutput.recordset[0].timestamp;
         log.trace('Connected at ', connectionTimestamp);
-        return (dbaConnection);
+        return ({dbaConnection,dbaConnectionString, provenConnectionString});
     } catch (error) {
         log.error(error.stack);
         throw Error(error);
     }
+}
+
+async function getBestConnectionParms(flags) {
+    let instance = 'localhost';
+    let connectionParms
+    let port = 1433
+
+    if (flags.sqlConnect) {
+        connectionParms = `${flags.sqlConnect};User Id=${flags.dbaUserName};Password=${flags.dbaPassword}`
+        try {
+            await mssql.connect(connectionParms);
+        } catch (error) {
+            throw new Error(`Cannot connect to ${flags.sqlConnect}: ${error.message}`)
+        }
+        log.trace(`Connected using ${connectionParms}`)
+        return (connectionParms)
+    } else {
+        if (flags.instance) {
+            instance = flags.instance
+        }
+        let connectionParmList = []
+        if (flags.port) {
+            port = flags.port
+        } 
+        ['true', 'false'].forEach((Encrypt) => {
+            ['true', 'false'].forEach((TrustedConnection) => {
+                ['true', 'false'].forEach((TrustServerCertificate) => {
+                    connectionParms = `Server=${instance};${port};Encrypt=${Encrypt};Trusted_Connection=${TrustedConnection};TrustServerCertificate=${TrustServerCertificate}`
+                    connectionParmList.push(connectionParms)
+
+                })
+            })
+        })
+        for (let ci = 0; ci < connectionParmList.length; ci++) {
+            connectionParms = connectionParmList[ci]
+            try {
+                let connection=await mssql.connect(connectionParms+`;User Id=${flags.dbaUserName};Password=${flags.dbaPassword}`);
+                log.trace('Connected to ', connectionParms)
+                return(connectionParms)
+                
+            } catch (error) {
+                log.error('Failed to connect to ', connectionParms, ' ', error.message)
+            }
+        }
+    }
+
 }

@@ -1,14 +1,7 @@
 dbConnection:
   connectionType: SQLSERVER
   connectionString: >-
-<<<<<<<
-    Server=localhost\SQLEXPRESS;1433;Encrypt=false;Trusted_Connection=True;TrustServerCertificate=True;User
-    Id=provendbTest2020;Password=DBEnvy2016
-=======
-    Server=localhost,1433;Encrypt=false;User
-    Id=provendbTest6614;Password=DBEnvy2016
->>>>>>>
-anchorType: HEDERA
+    Server=localhost\SQLEXPRESS;1433;Encrypt=false;Trusted_Connection=True;TrustServerCertificate=True;User Id=provendbTest2020;Password=DBEnvy2016 
 proofable:
   token: >-
     eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhbmNob3IiLCJleHAiOjE3ODA5ODE5MzMsImp0aSI6ImFhMW5nbnFtNDVpMHFtNHIxMHZmeGp1ZiIsInN1YiI6InUya3o3ZTc1NnNuajF6NTFid2g1bTZuZyIsInNjb3BlIjoiMCIsInJvbGUiOiJGcmVlIn0.MtooMUPuhCnve1DwJKqXQyh324I2x_9_ASH-xSs3j-0
