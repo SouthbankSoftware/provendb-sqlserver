@@ -11,6 +11,7 @@ const {
 const {
     saveConfig
 } = require('../services/config');
+const { setGracefulCleanup } = require('tmp');
 
 
 /* const {
@@ -39,16 +40,19 @@ class InstallCommand extends Command {
                     method: 'mask'
                 });
             }
-            await installPDB4SS(flags);
+            const connectionString=await installPDB4SS(flags);
             log.trace(flags.config);
             if (flags.config) {
-                const connectionString = `${flags.sqlConnect};User Id=${flags.provendbUser};Password=${flags.provendbPassword}`;
-                const dbConnection = {connectionType:'SQLSERVER', connectionString};
+                log.trace(connectionString)
+                 const dbConnection = {connectionType:'SQLSERVER', connectionString};
                 await saveConfig(flags.config, dbConnection, flags.verbose);
             }
             log.info('Install complete');
+            await sleep(1000)
+            process.exit(0)
         } catch (error) {
             log.error('Failed to install:');
+            log.trace(error.stack);
             log.error(error.message);
         }
     }
@@ -68,9 +72,18 @@ InstallCommand.flags = {
         required: false
     }),
     sqlConnect: flags.string({
-        description: 'SQL Server connection String',
-        required: true,
-        default: 'Server=localhost,1433;Encrypt=false'
+        description: 'SQL Server connection String (over-rides instance and port)',
+        required: false
+    }),
+    instance: flags.string({
+        description: 'SQL Server instance',
+        required: false,
+        default: 'localhost'
+    }),
+    port: flags.integer({
+        description: 'SQL Server port',
+        required: false,
+        default: 1433
     }),
     dbaPassword: flags.string({
         description: 'DBA Password',
@@ -100,3 +113,10 @@ InstallCommand.flags = {
 };
 
 module.exports = InstallCommand;
+
+
+function sleep(ms) {
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
+}

@@ -1,1 +1,1 @@
-./provendb-sqlserver install   --sqlConnect='Server=guy13,1433;Encrypt=false' --dbaPassword=DBEnvy2016 --dbaUserName=SA --provendbPassword=DBEnvy2016 --provendbUser=provendb --dropExisting --createDemoAccount --config=provendb.yaml  -v
+provendb-sqlserver install --sqlConnect='Server=guy13;1433;Encrypt=falseTrusted_Connection=True;TrustServerCertificate=True' --dbaPassword=Jagat\@2016 --dbaUserName=SA --provendbPassword=DBEnvy2016 --provendbUser=provendb --dropExisting --createDemoAccount --config=provendb.yaml
